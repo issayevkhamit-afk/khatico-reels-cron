@@ -106,26 +106,34 @@ def move_file(token: str, file_id: str, new_parent: str, old_parent: str, new_na
 # ---------------------------------------------------------------------------
 # Hosting + IG publish
 # ---------------------------------------------------------------------------
-def upload_catbox(file_path: Path, retries: int = 4) -> str:
-    """Upload to catbox.moe with retry on transient failures."""
+def upload_video(file_path: Path, retries: int = 4) -> str:
+    """Upload mp4 to a public URL. Tries Litterbox first (24h link, no IP block),
+    falls back to catbox.moe permanent."""
+    hosts = [
+        ("litterbox", ["curl", "-sS", "--max-time", "180",
+                       "-F", "reqtype=fileupload",
+                       "-F", "time=24h",
+                       "-F", f"fileToUpload=@{file_path}",
+                       "https://litterbox.catbox.moe/resources/internals/api.php"]),
+        ("catbox", ["curl", "-sS", "--max-time", "180",
+                    "-F", "reqtype=fileupload",
+                    "-F", f"fileToUpload=@{file_path}",
+                    "https://catbox.moe/user/api.php"]),
+    ]
     last_err = None
     for attempt in range(retries):
-        try:
-            cmd = [
-                "curl", "-sS", "--max-time", "120",
-                "-F", "reqtype=fileupload",
-                "-F", f"fileToUpload=@{file_path}",
-                "https://catbox.moe/user/api.php",
-            ]
-            out = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode().strip()
-            if out.startswith("https://"):
-                return out
-            last_err = f"unexpected response: {out[:200]}"
-        except subprocess.CalledProcessError as e:
-            last_err = f"curl exit {e.returncode}: {e.output.decode()[:200] if e.output else '?'}"
-        log(f"  catbox attempt {attempt+1} failed: {last_err}")
+        for name, cmd in hosts:
+            try:
+                out = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode().strip()
+                if out.startswith("https://"):
+                    log(f"  uploaded via {name}: {out}")
+                    return out
+                last_err = f"{name} response: {out[:200]}"
+            except subprocess.CalledProcessError as e:
+                last_err = f"{name} curl exit {e.returncode}: {e.output.decode()[:150] if e.output else '?'}"
+            log(f"  {name} attempt {attempt+1} failed: {last_err}")
         time.sleep(5 * (attempt + 1))
-    raise RuntimeError(f"catbox upload failed after {retries}: {last_err}")
+    raise RuntimeError(f"video upload failed after {retries}: {last_err}")
 
 
 def ig_publish(video_url: str, caption: str) -> tuple[str, str, str]:
@@ -216,8 +224,7 @@ def main():
     log(f"  downloaded {local_mp4.stat().st_size // 1024}KB")
 
     try:
-        url = upload_catbox(local_mp4)
-        log(f"  catbox: {url}")
+        url = upload_video(local_mp4)
 
         cid, media_id, permalink = ig_publish(url, meta["caption"])
         log(f"PUBLISHED: {permalink}")
