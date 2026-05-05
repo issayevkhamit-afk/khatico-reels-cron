@@ -5,8 +5,8 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "python3 pipeline.py",
-    "cronSchedule": "0 */2 * * *",
-    "restartPolicyType": "NEVER"
+    "startCommand": "python3 -u pipeline.py",
+    "restartPolicyType": "ALWAYS",
+    "numReplicas": 1
   }
 }
