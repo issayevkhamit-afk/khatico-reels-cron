@@ -238,9 +238,24 @@ def main():
         local_mp4.unlink(missing_ok=True)
 
 
+def loop():
+    """Long-running mode: fire main(), sleep 2h, repeat. Never exit on transient errors."""
+    interval = int(os.environ.get("TICK_INTERVAL_SEC", "7200"))
+    while True:
+        try:
+            main()
+        except Exception as e:
+            log(f"TICK ERROR (will retry next cycle): {e}")
+        log(f"sleeping {interval}s until next tick")
+        time.sleep(interval)
+
+
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        log(f"FATAL: {e}")
-        sys.exit(1)
+    if os.environ.get("RUN_MODE", "loop") == "once":
+        try:
+            main()
+        except Exception as e:
+            log(f"FATAL: {e}")
+            sys.exit(1)
+    else:
+        loop()
